@@ -1,0 +1,22 @@
+# Build outputs
+build/
+out/
+*.user
+*.suo
+.vs/
+
+# Qt Creator
+*.pro.user
+CMakeLists.txt.user
+
+# MSVC
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+
+# macOS
+.DS_Store
