@@ -22,38 +22,36 @@ public:
               FactBuffer& buffer,
               std::atomic<uint64_t>& nextSymbolId,
               std::atomic<int>& doneCount,
-              std::atomic<int>& errorCount)
+              std::atomic<int>& hardErrorCount,
+              std::atomic<int>& softErrorCount)
         : m_path(std::move(path))
         , m_buffer(buffer)
         , m_nextSymbolId(nextSymbolId)
         , m_doneCount(doneCount)
-        , m_errorCount(errorCount)
+        , m_hardErrorCount(hardErrorCount)
+        , m_softErrorCount(softErrorCount)
     {
         setAutoDelete(true);
     }
 
     void run() override {
-        // Memory-map the file
         QFile file(QString::fromStdString(m_path.string()));
         if (!file.open(QIODevice::ReadOnly)) {
             qCWarning(lcParser) << "Cannot open:" << QString::fromStdString(m_path.string());
             m_buffer.appendParseError(m_path.string());
-            ++m_errorCount;
+            ++m_hardErrorCount;
             ++m_doneCount;
             return;
         }
 
         qint64 size = file.size();
-        if (size == 0) {
-            ++m_doneCount;
-            return;
-        }
+        if (size == 0) { ++m_doneCount; return; }
 
         const uchar* mapped = file.map(0, size);
         if (!mapped) {
             qCWarning(lcParser) << "Cannot map:" << QString::fromStdString(m_path.string());
             m_buffer.appendParseError(m_path.string());
-            ++m_errorCount;
+            ++m_hardErrorCount;
             ++m_doneCount;
             return;
         }
@@ -64,17 +62,16 @@ public:
         if (!ok || !parser.tree()) {
             qCWarning(lcParser) << "Parse failed:" << QString::fromStdString(m_path.string());
             m_buffer.appendParseError(m_path.string());
-            ++m_errorCount;
+            ++m_hardErrorCount;
             ++m_doneCount;
             file.unmap(const_cast<uchar*>(mapped));
             return;
         }
 
-        if (parser.hasErrors()) {
-            qCWarning(lcParser) << "Parse errors in:" << QString::fromStdString(m_path.string());
-            // Do not append to parseErrors — we still extract what we can
-            ++m_errorCount;
-        }
+        // Soft error: tree-sitter recovered but flagged ERROR nodes.
+        // We still extract — results will be approximate for this file.
+        if (parser.hasErrors())
+            ++m_softErrorCount;
 
         FactExtractor extractor(m_buffer, m_nextSymbolId);
         extractor.extractFromFile(m_path,
@@ -91,7 +88,8 @@ private:
     FactBuffer&             m_buffer;
     std::atomic<uint64_t>&  m_nextSymbolId;
     std::atomic<int>&       m_doneCount;
-    std::atomic<int>&       m_errorCount;
+    std::atomic<int>&       m_hardErrorCount;
+    std::atomic<int>&       m_softErrorCount;
 };
 
 // ---------------------------------------------------------------------------
@@ -106,36 +104,34 @@ void parseFiles(const std::vector<std::filesystem::path>& files,
     if (total == 0) return;
 
     std::atomic<int> doneCount{0};
-    std::atomic<int> errorCount{0};
+    std::atomic<int> hardErrorCount{0};
+    std::atomic<int> softErrorCount{0};
 
     QThreadPool pool;
     pool.setMaxThreadCount(static_cast<int>(QThread::idealThreadCount()));
 
     for (const auto& path : files) {
-        pool.start(new ParseTask(path, buffer, nextSymbolId, doneCount, errorCount));
+        pool.start(new ParseTask(path, buffer, nextSymbolId,
+                                 doneCount, hardErrorCount, softErrorCount));
     }
 
-    // Progress reporting loop — 100 ms intervals
-    while (!pool.waitForDone(100)) {
-        if (progress) {
-            ParserPoolProgress prog;
-            prog.filesParsed = doneCount.load();
-            prog.totalFiles  = total;
-            prog.parseErrors = errorCount.load();
-            progress(prog);
-        }
-    }
-
-    if (progress) {
+    auto makeProgress = [&]() {
         ParserPoolProgress prog;
         prog.filesParsed = doneCount.load();
         prog.totalFiles  = total;
-        prog.parseErrors = errorCount.load();
-        progress(prog);
+        prog.hardErrors  = hardErrorCount.load();
+        prog.softErrors  = softErrorCount.load();
+        return prog;
+    };
+
+    while (!pool.waitForDone(100)) {
+        if (progress) progress(makeProgress());
     }
+    if (progress) progress(makeProgress());
 
     qCInfo(lcParser) << "Parsed" << doneCount.load() << "/" << total
-                     << "files," << errorCount.load() << "with errors";
+                     << "files —" << hardErrorCount.load() << "hard errors,"
+                     << softErrorCount.load() << "with partial tree-sitter errors";
 }
 
 } // namespace cg

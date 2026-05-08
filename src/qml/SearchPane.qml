@@ -8,8 +8,7 @@ Rectangle {
     border.color: "#ddd"
     border.width: 1
 
-    // Injected from Main.qml
-    required property var controller
+    // 'controller' is a QML context property — accessible without redeclaration.
 
     ColumnLayout {
         anchors.fill: parent

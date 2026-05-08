@@ -47,21 +47,27 @@ void MermaidExporter::exportSlice(const GraphSlice& slice,
                                   const Index& index,
                                   const ExportHeader& header,
                                   std::ostream& out) {
-    // Header comment
-    out << "%% CallGraph v" << header.toolVersion << "\n";
-    out << "%% Source root: " << header.sourceRoot << "\n";
-    out << "%% Git commit: " << header.gitCommit << "\n";
-    out << "%% Root: ";
-    if (auto* sym = index.symbol(slice.root))
-        out << sym->qualified_name;
-    out << "  depth: " << slice.params.maxDepth << "\n";
+    const FunctionInfo* rootSym = index.symbol(slice.root);
+    const std::string rootName  = rootSym ? rootSym->qualified_name : "unknown";
+
+    // Markdown heading
+    out << "# Call graph: " << rootName << "\n\n";
+
+    // HTML comment carrying metadata (invisible in rendered Markdown)
+    out << "<!--\n";
+    out << "  CallGraph v" << header.toolVersion << "\n";
+    out << "  Source root: " << header.sourceRoot << "\n";
+    out << "  Git commit:  " << header.gitCommit << "\n";
+    out << "  Root:        " << rootName << "  depth: " << slice.params.maxDepth << "\n";
     if (header.includeTimestamp) {
         auto now = std::chrono::system_clock::now();
         std::time_t t = std::chrono::system_clock::to_time_t(now);
-        out << "%% Generated: " << std::put_time(std::gmtime(&t), "%Y-%m-%dT%H:%M:%SZ") << "\n";
+        out << "  Generated:   " << std::put_time(std::gmtime(&t), "%Y-%m-%dT%H:%M:%SZ") << "\n";
     }
-    out << "\n";
+    out << "-->\n\n";
 
+    // Mermaid code block
+    out << "```mermaid\n";
     out << "flowchart TD\n";
 
     // Node declarations
@@ -102,6 +108,8 @@ void MermaidExporter::exportSlice(const GraphSlice& slice,
     out << "    classDef root fill:#f90,stroke:#333,stroke-width:2px\n";
     out << "    classDef unresolved fill:#eee,stroke:#999,stroke-dasharray:5 5\n";
     out << "    classDef boundary fill:#cdf,stroke:#69c\n";
+
+    out << "```\n";
 }
 
 } // namespace cg

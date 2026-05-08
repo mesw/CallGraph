@@ -10,10 +10,10 @@ ApplicationWindow {
     height: 900
     visible: true
 
-    // Injected from main.cpp via setContextProperty
-    property var controller: null
+    // 'controller' is injected via engine.rootContext()->setContextProperty()
+    // and is accessible as a plain identifier in all QML files in this engine.
+    // Do NOT redeclare it here — that would shadow the context property with null.
 
-    // Export dialog state
     property string pendingExportFormat: "mermaid"
 
     // ---------------------------------------------------------------------------
@@ -26,16 +26,13 @@ ApplicationWindow {
             anchors.rightMargin: 8
             spacing: 8
 
-            // Source root field
             TextField {
                 id: sourceRootField
                 Layout.preferredWidth: 340
-                text: controller ? controller.settings.sourceRoot : ""
+                text: controller.settings.sourceRoot
                 placeholderText: "Source root (git working tree)…"
                 font.pixelSize: 12
-                onEditingFinished: {
-                    if (controller) controller.settings.sourceRoot = text
-                }
+                onEditingFinished: controller.settings.sourceRoot = text
             }
 
             Button {
@@ -45,8 +42,8 @@ ApplicationWindow {
             }
 
             Button {
-                text: controller && controller.indexBuilding ? "Building…" : "Build Index"
-                enabled: controller && !controller.indexBuilding && sourceRootField.text.length > 0
+                text: controller.indexBuilding ? "Building…" : "Build Index"
+                enabled: !controller.indexBuilding && sourceRootField.text.length > 0
                 font.pixelSize: 12
                 onClicked: {
                     controller.settings.sourceRoot = sourceRootField.text
@@ -55,16 +52,14 @@ ApplicationWindow {
                 }
             }
 
-            // Status label
             Label {
-                text: controller ? controller.indexStatus : ""
+                text: controller.indexStatus
                 font.pixelSize: 11
                 color: "#555"
                 elide: Text.ElideRight
                 Layout.fillWidth: true
             }
 
-            // Filter toggles
             Label { text: "Edges:"; font.pixelSize: 11; color: "#555" }
             ComboBox {
                 id: edgeFilterCombo
@@ -72,48 +67,45 @@ ApplicationWindow {
                 font.pixelSize: 11
                 implicitWidth: 120
                 onCurrentIndexChanged: {
-                    if (!controller) return
                     switch (currentIndex) {
                     case 0: controller.edgeFilter = 0xFF; break
-                    case 1: controller.edgeFilter = 0x03; break  // DirectCall|MethodCall
-                    case 2: controller.edgeFilter = 0xFF & ~0x40; break  // all except Unresolved
+                    case 1: controller.edgeFilter = 0x03; break
+                    case 2: controller.edgeFilter = 0xBF; break  // 0xFF & ~0x40 (Unresolved bit)
                     }
                 }
             }
 
-            // Depth selector
             Label { text: "Export depth:"; font.pixelSize: 11; color: "#555" }
             SpinBox {
-                from: 1; to: 10; value: controller ? controller.settings.exportDepth : 3
+                from: 1; to: 10; value: controller.settings.exportDepth
                 font.pixelSize: 11
                 implicitWidth: 70
-                onValueChanged: if (controller) controller.settings.exportDepth = value
+                onValueChanged: controller.settings.exportDepth = value
             }
 
-            // Export button
             Button {
                 text: "Export…"
                 font.pixelSize: 12
-                enabled: controller && controller.indexReady && controller.focusId !== 0
+                enabled: controller.indexReady && controller.focusId !== 0
                 onClicked: exportMenu.open()
 
                 Menu {
                     id: exportMenu
                     MenuItem {
                         text: "Mermaid (.md)"
-                        onTriggered: { pendingExportFormat = "mermaid"; saveDialog.open() }
+                        onTriggered: { window.pendingExportFormat = "mermaid"; saveDialog.open() }
                     }
                     MenuItem {
                         text: "Graphviz DOT (.dot)"
-                        onTriggered: { pendingExportFormat = "dot"; saveDialog.open() }
+                        onTriggered: { window.pendingExportFormat = "dot"; saveDialog.open() }
                     }
                     MenuItem {
                         text: "draw.io XML (.xml)"
-                        onTriggered: { pendingExportFormat = "drawio"; saveDialog.open() }
+                        onTriggered: { window.pendingExportFormat = "drawio"; saveDialog.open() }
                     }
                     MenuItem {
                         text: "JSON (.json)"
-                        onTriggered: { pendingExportFormat = "json"; saveDialog.open() }
+                        onTriggered: { window.pendingExportFormat = "json"; saveDialog.open() }
                     }
                 }
             }
@@ -128,24 +120,18 @@ ApplicationWindow {
         orientation: Qt.Horizontal
 
         SearchPane {
-            id: searchPane
             SplitView.preferredWidth: 300
             SplitView.minimumWidth: 180
-            controller: window.controller
         }
 
         FocusPane {
-            id: focusPane
             SplitView.preferredWidth: 320
             SplitView.minimumWidth: 200
-            controller: window.controller
         }
 
         DetailsPane {
-            id: detailsPane
             SplitView.fillWidth: true
             SplitView.minimumWidth: 280
-            controller: window.controller
         }
     }
 
@@ -165,16 +151,14 @@ ApplicationWindow {
             spacing: 16
 
             Label {
-                text: controller
-                      ? controller.symbolCount + " symbols, " + controller.edgeCount + " edges"
-                      : "No index"
+                text: controller.symbolCount + " symbols, " + controller.edgeCount + " edges"
                 font.pixelSize: 11
                 color: "#555"
             }
 
             Label {
-                visible: controller && controller.parseErrors.length > 0
-                text: controller ? controller.parseErrors.length + " parse error(s)" : ""
+                visible: controller.parseErrors.length > 0
+                text: controller.parseErrors.length + " parse error(s)"
                 font.pixelSize: 11
                 color: "#c00"
                 MouseArea {
@@ -187,8 +171,8 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
 
             Label {
-                visible: controller && controller.focusQName.length > 0
-                text: controller ? "Focus: " + controller.focusQName : ""
+                visible: controller.focusQName.length > 0
+                text: "Focus: " + controller.focusQName
                 font.pixelSize: 11
                 color: "#555"
                 elide: Text.ElideLeft
@@ -204,9 +188,9 @@ ApplicationWindow {
         id: folderDialog
         title: "Select source root"
         onAccepted: {
-            var path = selectedFolder.toString().replace("file:///", "").replace("file://", "")
+            var path = selectedFolder.toString().replace(/^file:\/\/\//, "").replace(/^file:\/\//, "")
             sourceRootField.text = path
-            if (controller) controller.settings.sourceRoot = path
+            controller.settings.sourceRoot = path
         }
     }
 
@@ -215,7 +199,7 @@ ApplicationWindow {
         title: "Export to…"
         fileMode: FileDialog.SaveFile
         nameFilters: {
-            switch (pendingExportFormat) {
+            switch (window.pendingExportFormat) {
             case "mermaid": return ["Mermaid files (*.md *.mmd)", "All files (*)"]
             case "dot":     return ["DOT files (*.dot *.gv)", "All files (*)"]
             case "drawio":  return ["draw.io XML (*.xml)", "All files (*)"]
@@ -224,8 +208,8 @@ ApplicationWindow {
             }
         }
         onAccepted: {
-            var path = selectedFile.toString().replace("file:///", "").replace("file://", "")
-            if (controller) controller.exportSlice(pendingExportFormat, path)
+            var path = selectedFile.toString().replace(/^file:\/\/\//, "").replace(/^file:\/\//, "")
+            controller.exportSlice(window.pendingExportFormat, path)
         }
     }
 
@@ -235,32 +219,28 @@ ApplicationWindow {
         width: 600
         height: 400
         standardButtons: Dialog.Close
-
         ScrollView {
             anchors.fill: parent
             TextArea {
                 readOnly: true
-                text: controller ? controller.parseErrors.join("\n") : ""
+                text: controller.parseErrors.join("\n")
                 font.pixelSize: 11
                 font.family: "Consolas, monospace"
             }
         }
     }
 
-    // Export success/failure notifications
     Connections {
         target: controller
-
         function onExportDone(filePath) {
+            exportNotif.notifColor = "#2e7d32"
             exportNotif.text = "Exported to: " + filePath
-            exportNotif.color = "#2e7d32"
             exportNotif.visible = true
             exportNotifTimer.restart()
         }
-
         function onExportError(message) {
+            exportNotif.notifColor = "#c62828"
             exportNotif.text = "Export error: " + message
-            exportNotif.color = "#c62828"
             exportNotif.visible = true
             exportNotifTimer.restart()
         }
@@ -273,24 +253,13 @@ ApplicationWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 40
         radius: 6
-        color: "#2e7d32"
+        z: 10
+        property string notifColor: "#2e7d32"
+        property alias text: notifLabel.text
+        color: notifColor
         implicitWidth: notifLabel.implicitWidth + 24
         implicitHeight: notifLabel.implicitHeight + 12
-        z: 10
-
-        property alias text: notifLabel.text
-
-        Label {
-            id: notifLabel
-            anchors.centerIn: parent
-            color: "white"
-            font.pixelSize: 12
-        }
-
-        Timer {
-            id: exportNotifTimer
-            interval: 3000
-            onTriggered: exportNotif.visible = false
-        }
+        Label { id: notifLabel; anchors.centerIn: parent; color: "white"; font.pixelSize: 12 }
+        Timer { id: exportNotifTimer; interval: 3000; onTriggered: exportNotif.visible = false }
     }
 }

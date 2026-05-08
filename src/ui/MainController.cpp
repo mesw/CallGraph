@@ -61,8 +61,11 @@ void MainController::buildIndex() {
         emit indexStatusChanged();
     }, Qt::QueuedConnection);
     connect(worker, &IndexWorker::parseProgress, this,
-            [this](int parsed, int total, int /*errors*/) {
-        m_indexStatus = QString("Parsing… %1 / %2").arg(parsed).arg(total);
+            [this](int parsed, int total, int hardErrors) {
+        m_indexStatus = hardErrors > 0
+            ? QString("Parsing… %1 / %2  (%3 failed to open)")
+                  .arg(parsed).arg(total).arg(hardErrors)
+            : QString("Parsing… %1 / %2").arg(parsed).arg(total);
         emit indexStatusChanged();
     }, Qt::QueuedConnection);
     connect(worker, &IndexWorker::indexReady, this,
@@ -92,6 +95,10 @@ void MainController::onIndexReady(std::shared_ptr<const Index> index,
     emit parseErrorsChanged();
     emit symbolCountChanged();
     emit edgeCountChanged();
+
+    // Re-run any search that was typed before the index finished building.
+    if (!m_searchQuery.isEmpty())
+        runSearch();
 }
 
 void MainController::onIndexFinished(bool success, const QString& errorMessage) {
