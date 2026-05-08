@@ -2,6 +2,7 @@
 
 #include "core/Index.h"
 #include "core/Types.h"
+#include "export/Exporter.h"
 #include <QAbstractListModel>
 #include <memory>
 #include <vector>
