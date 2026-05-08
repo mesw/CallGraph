@@ -40,7 +40,7 @@ void IndexWorker::run() {
     std::atomic<uint64_t> nextSymbolId{1};
 
     parseFiles(discResult.files, facts, nextSymbolId, [this](const ParserPoolProgress& p) {
-        emit parseProgress(p.filesParsed, p.totalFiles, p.parseErrors);
+        emit parseProgress(p.filesParsed, p.totalFiles, p.hardErrors);
     });
 
     // --- Resolution ---

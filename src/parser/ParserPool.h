@@ -11,7 +11,12 @@ namespace cg {
 struct ParserPoolProgress {
     int filesParsed  = 0;
     int totalFiles   = 0;
-    int parseErrors  = 0;
+    // Hard errors: file could not be opened or tree-sitter returned no tree.
+    // These files are skipped entirely and added to FactBuffer::parseErrors.
+    int hardErrors   = 0;
+    // Soft errors: tree-sitter parsed the file but flagged ERROR nodes.
+    // Extraction still runs on the partial tree — results are approximate.
+    int softErrors   = 0;
 };
 
 using ParserProgressFn = std::function<void(const ParserPoolProgress&)>;

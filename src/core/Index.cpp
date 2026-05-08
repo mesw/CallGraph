@@ -43,9 +43,15 @@ std::vector<SymbolId> Index::byName(std::string_view qualified_name) const {
 
 std::vector<SymbolId> Index::findBySubstring(std::string_view query) const {
     std::vector<SymbolId> result;
+    // Case-insensitive: lowercase both sides before comparing
     std::string q(query);
+    std::transform(q.begin(), q.end(), q.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
     for (const auto& name : m_allNames) {
-        if (name.find(q) != std::string::npos) {
+        std::string nameLower(name);
+        std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(),
+                       [](unsigned char c){ return std::tolower(c); });
+        if (nameLower.find(q) != std::string::npos) {
             for (SymbolId sid : m_byName.at(name))
                 result.push_back(sid);
         }
